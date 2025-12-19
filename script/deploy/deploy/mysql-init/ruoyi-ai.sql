@@ -817,6 +817,9 @@ VALUES (1938227249417805826, '000000', 1, '图片识别模型-image', 'image', '
 INSERT INTO `sys_dict_data`
 VALUES (1940594785010503681, '000000', 1, 'FASTGPT-fastgpt', 'fastgpt', 'chat_model_category', NULL, '', 'N', '0', 103,
         1, '2025-07-03 10:13:46', 1, '2025-07-03 10:13:46', NULL);
+INSERT INTO `sys_dict_data`
+VALUES (1940594785010503682, '000000', 1, 'RAGFLOW-ragflow', 'ragflow', 'chat_model_category', NULL, '', 'N', '0', 103,
+        1, '2025-07-03 10:14:00', 1, '2025-07-03 10:14:00', NULL);
 
 -- ----------------------------
 -- Table structure for sys_dict_type

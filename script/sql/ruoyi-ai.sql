@@ -1196,6 +1196,9 @@ INSERT INTO `sys_dict_data`
 VALUES (1940594785010503681, '000000', 1, 'FASTGPT-fastgpt', 'fastgpt', 'chat_model_category', NULL, '', 'N', '0', 103,
         1, '2025-07-03 10:13:46', 1, '2025-07-03 10:13:46', NULL);
 INSERT INTO `sys_dict_data`
+VALUES (1940594785010503682, '000000', 1, 'RAGFLOW-ragflow', 'ragflow', 'chat_model_category', NULL, '', 'N', '0', 103,
+        1, '2025-07-03 10:14:00', 1, '2025-07-03 10:14:00', NULL);
+INSERT INTO `sys_dict_data`
 VALUES (1954098808913211393, '000000', 0, 'STDIO', 'STDIO', 'mcp_transport_type', NULL, '', 'N', '0', NULL, NULL,
         '2025-08-09 16:33:56', 1, '2025-08-09 16:34:19', NULL);
 INSERT INTO `sys_dict_data`
