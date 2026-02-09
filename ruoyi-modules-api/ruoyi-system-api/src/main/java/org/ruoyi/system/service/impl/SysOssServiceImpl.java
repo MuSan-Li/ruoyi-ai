@@ -68,8 +68,8 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     // apiHost 配置名称
     private static final String CONFIG_NAME_URL = "apiHost";
 
-    // 默认密钥
-    private static String API_KEY = "Bearer sk-579b7e20e19147469945a537a614b38a";
+    // 默认密钥 todo：请在系统配置中设置正确的密钥
+    private static String API_KEY = "";
 
     // 默认api路径地址
     private static String API_HOST = "https://dashscope.aliyuncs.com/compatible-mode/v1/files";
