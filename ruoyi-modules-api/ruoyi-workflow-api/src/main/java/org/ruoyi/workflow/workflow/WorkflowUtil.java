@@ -35,6 +35,12 @@ public class WorkflowUtil {
     @Resource
     private ChatServiceFactory chatServiceFactory;
 
+    // 添加默认名称的成员变量
+    private static final String DEFAULT_NODE_NAME = "input";
+
+    // 添加文档解析的前缀字段
+    private static final String UPLOAD_FILE_API_PREFIX = "fileid";
+
     public static String renderTemplate(String template, List<NodeIOData> values) {
         // 🔒 关键修复：如果 template 为 null，直接返回 null 或空字符串
         if (template == null) {
@@ -125,9 +131,9 @@ public class WorkflowUtil {
         // 构建 ruoyi-ai 的 ChatRequest
         List<Message> messages = new ArrayList<>();
 
-        addUserMessage(node, state.getInputs(), messages);
-
-        addSystemMessage(systemMessage, messages);
+        List<NodeIOData> inputs = state.getInputs();
+        addUserMessage(node, inputs, messages);
+        addSystemMessage(systemMessage, inputs, messages);
 
         ChatRequest chatRequest = new ChatRequest();
         chatRequest.setModel(modelName);
@@ -150,20 +156,44 @@ public class WorkflowUtil {
         }
 
         WfNodeInputConfig nodeInputConfig = NodeInputConfigTypeHandler.fillNodeInputConfig(node.getInputConfig());
-
         List<WfNodeParamRef> refInputs = nodeInputConfig.getRefInputs();
-
         Set<String> nameSet = CollStreamUtil.toSet(refInputs, WfNodeParamRef::getName);
 
-        userMessage.stream().filter(item -> nameSet.contains(item.getName()))
-                .map(item -> getMessage("user", item.getContent().getValue())).forEach(messages::add);
-
-        if (CollUtil.isNotEmpty(messages)) {
-            return;
+        // 检查是否存在包含fileId的NodeIOData对象
+        boolean hasFileIdData = hasFileIdData(userMessage);
+        // 构建消息列表
+        List<Message> messageList = buildMessageList(userMessage, nameSet, hasFileIdData, DEFAULT_NODE_NAME);
+        // 如果没有找到匹配的消息，尝试使用input字段
+        if (CollUtil.isEmpty(messageList)) {
+            messageList = buildMessageList(userMessage, Set.of("input"), hasFileIdData, DEFAULT_NODE_NAME);
         }
+        messages.addAll(messageList);
+    }
 
-        userMessage.stream().filter(item -> "input".equals(item.getName()))
-                .map(item -> getMessage("user", item.getContent().getValue())).forEach(messages::add);
+
+    /**
+     * 检查是否包含fileId数据
+     */
+    private boolean hasFileIdData(List<NodeIOData> userMessage) {
+        return userMessage.stream().anyMatch(item ->
+                item != null &&
+                        item.getContent() != null &&
+                        item.getContent().getValue() != null &&
+                        String.valueOf(item.getContent().getValue()).toLowerCase().contains(UPLOAD_FILE_API_PREFIX)
+        );
+    }
+
+    /**
+     * 构建消息列表
+     */
+    private List<Message> buildMessageList(List<NodeIOData> userMessage, Set<String> nameSet, boolean hasFileIdData, String defaultName) {
+        String role = hasFileIdData ? "system" : "user";
+
+        return userMessage.stream()
+                .filter(item -> item != null && item.getName() != null)
+                .filter(item -> nameSet.contains(item.getName()) || defaultName.equals(item.getName()))
+                .map(item -> getMessage(role, item.getContent().getValue()))
+                .toList();
     }
 
     /**
@@ -187,14 +217,22 @@ public class WorkflowUtil {
      * @param systemMessage
      * @param messages
      */
-    private void addSystemMessage(List<UserMessage> systemMessage, List<Message> messages) {
-        log.info("addSystemMessage received: {}", systemMessage); // 🔥 加这一行
+    private void addSystemMessage(List<UserMessage> systemMessage, List<NodeIOData> userMessage, List<Message> messages) {
+        log.info("addSystemMessage received: {}", systemMessage);
 
         if (CollUtil.isEmpty(systemMessage)) {
             return;
         }
+
+        // 检查是否存在包含fileId的NodeIOData对象
+        boolean hasFileIdData = hasFileIdData(userMessage);
+
+        // 根据是否有fileId数据确定消息角色
+        String role = hasFileIdData ? "user" : "system";
+
+        // 添加消息
         systemMessage.stream()
-                .map(userMsg -> getMessage("system", userMsg.singleText()))
+                .map(userMsg -> getMessage(role, userMsg.singleText()))
                 .forEach(messages::add);
     }
 }
