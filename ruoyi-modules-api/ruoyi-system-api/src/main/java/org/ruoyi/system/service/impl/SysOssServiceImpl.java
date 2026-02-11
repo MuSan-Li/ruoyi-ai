@@ -8,16 +8,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import okhttp3.*;
 import org.ruoyi.common.core.constant.CacheNames;
 import org.ruoyi.common.core.exception.ServiceException;
+import org.ruoyi.common.core.service.ConfigService;
 import org.ruoyi.common.core.service.OssService;
-import org.ruoyi.common.core.utils.MapstructUtils;
 import org.ruoyi.common.core.utils.SpringUtils;
 import org.ruoyi.common.core.utils.StreamUtils;
 import org.ruoyi.common.core.utils.StringUtils;
 import org.ruoyi.common.core.utils.file.FileUtils;
 import org.ruoyi.common.oss.core.OssClient;
-import org.ruoyi.common.oss.entity.UploadResult;
 import org.ruoyi.common.oss.enumd.AccessPolicyType;
 import org.ruoyi.common.oss.factory.OssFactory;
 import org.ruoyi.core.page.PageQuery;
@@ -27,12 +27,15 @@ import org.ruoyi.system.domain.bo.SysOssBo;
 import org.ruoyi.system.domain.vo.SysOssVo;
 import org.ruoyi.system.mapper.SysOssMapper;
 import org.ruoyi.system.service.ISysOssService;
+import org.ruoyi.system.utils.QwenFileUploadUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
@@ -47,6 +50,29 @@ import java.util.*;
 public class SysOssServiceImpl implements ISysOssService, OssService {
 
     private final SysOssMapper baseMapper;
+
+    private final ConfigService configService;
+
+    // 文档解析判断前缀
+    private static final String FILE_ID_PREFIX = "fileid://";
+
+    // 服务名称
+    private static final String DASH_SCOPE = "Qwen";
+
+    // 默认服务
+    private static final String CATEGORY = "file";
+
+    // apiKey 配置名称
+    private static final String CONFIG_NAME_KEY = "apiKey";
+
+    // apiHost 配置名称
+    private static final String CONFIG_NAME_URL = "apiHost";
+
+    // 默认密钥 todo：请在系统配置中设置正确的密钥
+    private static String API_KEY = "";
+
+    // 默认api路径地址
+    private static String API_HOST = "https://dashscope.aliyuncs.com/compatible-mode/v1/files";
 
     @Override
     public TableDataInfo<SysOssVo> queryPageList(SysOssBo bo, PageQuery pageQuery) {
@@ -161,26 +187,41 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
 
     @Override
     public SysOssVo upload(MultipartFile file) {
-        String originalfileName = file.getOriginalFilename();
-        String suffix = StringUtils.substring(originalfileName, originalfileName.lastIndexOf("."),
-                originalfileName.length());
-        OssClient storage = OssFactory.instance();
-        UploadResult uploadResult;
+        String originalName = file.getOriginalFilename();
+        int lastDotIndex = originalName != null ? originalName.lastIndexOf(".") : -1;
+        String prefix = lastDotIndex > 0 ? "" : originalName.substring(0, lastDotIndex);
+        String suffix = lastDotIndex > 0 ? "" : originalName.substring(lastDotIndex);
+        File tempFile = null;
         try {
-            uploadResult = storage.uploadSuffix(file.getBytes(), suffix, file.getContentType());
+            // 创建临时文件来处理MultipartFile
+            tempFile = File.createTempFile("upload_", suffix);
+            file.transferTo(tempFile);
+            // 获取配置
+            initConfig();
+            // 使用工具类上传文件到阿里云
+            String fileId = QwenFileUploadUtils.uploadFile(tempFile, API_HOST, API_KEY);
+            if (StringUtils.isEmpty(fileId)) {
+                throw new ServiceException("文件上传失败，未获取到fileId");
+            }
+            // 保存文件信息到数据库
+            SysOss oss = new SysOss();
+            oss.setUrl(FILE_ID_PREFIX + fileId);
+            oss.setFileSuffix(suffix);
+            oss.setFileName(prefix);
+            oss.setOriginalName(originalName);
+            oss.setService(DASH_SCOPE);
+            baseMapper.insert(oss);
+            SysOssVo sysOssVo = new SysOssVo();
+            BeanUtils.copyProperties(oss, sysOssVo);
+            return sysOssVo;
         } catch (IOException e) {
-            throw new ServiceException(e.getMessage());
+            throw new ServiceException("文件上传失败: " + e.getMessage());
+        } finally {
+            // 删除临时文件
+            if (tempFile != null) {
+                tempFile.delete();
+            }
         }
-        // 保存文件信息
-        SysOss oss = new SysOss();
-        oss.setUrl(uploadResult.getUrl());
-        oss.setFileSuffix(suffix);
-        oss.setFileName(uploadResult.getFilename());
-        oss.setOriginalName(originalfileName);
-        oss.setService(storage.getConfigKey());
-        baseMapper.insert(oss);
-        SysOssVo sysOssVo = MapstructUtils.convert(oss, SysOssVo.class);
-        return this.matchingUrl(sysOssVo);
     }
 
     @Override
@@ -255,5 +296,21 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         } catch (Exception e) {
             throw new ServiceException("删除文件失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 初始化配置并返回API密钥和主机
+     */
+    private void initConfig() {
+        String apiKey = configService.getConfigValue(CATEGORY, CONFIG_NAME_KEY);
+        if (StringUtils.isEmpty(apiKey)) {
+            throw new ServiceException("请先配置Qwen上传文件相关API_KEY");
+        }
+        API_KEY = apiKey;
+        String apiHost = configService.getConfigValue(CATEGORY, CONFIG_NAME_URL);
+        if (StringUtils.isEmpty(apiHost)) {
+            throw new ServiceException("请先配置Qwen上传文件相关API_HOST");
+        }
+        API_HOST = apiHost;
     }
 }

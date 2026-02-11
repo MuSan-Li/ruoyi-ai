@@ -6,6 +6,7 @@ import org.ruoyi.workflow.workflow.node.AbstractWfNode;
 import org.ruoyi.workflow.workflow.node.EndNode;
 import org.ruoyi.workflow.workflow.node.answer.LLMAnswerNode;
 import org.ruoyi.workflow.workflow.node.httpRequest.HttpRequestNode;
+import org.ruoyi.workflow.workflow.node.humanFeedBack.HumanFeedbackNode;
 import org.ruoyi.workflow.workflow.node.keywordExtractor.KeywordExtractorNode;
 import org.ruoyi.workflow.workflow.node.knowledgeRetrieval.KnowledgeRetrievalNode;
 import org.ruoyi.workflow.workflow.node.mailSend.MailSendNode;
@@ -25,6 +26,7 @@ public class WfNodeFactory {
             case MAIL_SEND -> wfNode = new MailSendNode(wfComponent, nodeDefinition, wfState, nodeState);
             case HTTP_REQUEST -> wfNode = new HttpRequestNode(wfComponent, nodeDefinition, wfState, nodeState);
             case SWITCHER -> wfNode = new SwitcherNode(wfComponent, nodeDefinition, wfState, nodeState);
+            case HUMAN_FEEDBACK -> wfNode = new HumanFeedbackNode(wfComponent, nodeDefinition, wfState, nodeState);
             default -> {
             }
         }

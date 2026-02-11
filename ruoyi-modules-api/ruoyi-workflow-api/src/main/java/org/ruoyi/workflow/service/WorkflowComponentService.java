@@ -98,7 +98,7 @@ public class WorkflowComponentService extends ServiceImpl<WorkflowComponentMappe
         return baseMapper.selectPage(new Page<>(currentPage, pageSize), wrapper);
     }
 
-    @Cacheable(cacheNames = WORKFLOW_COMPONENTS)
+    // @Cacheable(cacheNames = WORKFLOW_COMPONENTS)
     public List<WorkflowComponent> getAllEnable() {
         return ChainWrappers.lambdaQueryChain(baseMapper)
                 .eq(WorkflowComponent::getIsEnable, true)
