@@ -52,6 +52,10 @@ public class CodeReviewService {
     private final ChatServiceFactory chatServiceFactory;
     private final Map<String, GitPlatformClient> platformClients;
     private final ApplicationEventPublisher eventPublisher;
+    private final ReviewConfigService configService;
+    private final IncrementalReviewService incrementalReviewService;
+    private final ParallelReviewService parallelReviewService;
+    private final ReviewStatisticsService statisticsService;
 
     private GitPlatformClient getClient(String platform) {
         for (GitPlatformClient client : platformClients.values()) {
