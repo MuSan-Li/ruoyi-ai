@@ -55,7 +55,7 @@ class CodeReviewE2ETest {
 
     /** 企业微信 Webhook */
     private static final String WECOM_WEBHOOK = System.getProperty("wecom.webhook",
-        "System.getenv("WECOM_WEBHOOK") != null ? System.getenv("WECOM_WEBHOOK") : """);
+        System.getenv("WECOM_WEBHOOK") != null ? System.getenv("WECOM_WEBHOOK") : "");
 
     /** GitHub Token */
     private static final String GITHUB_TOKEN = System.getProperty("github.token", "");

@@ -59,7 +59,7 @@ public class TrendRadarE2ETest {
 
     /** 企业微信 Webhook */
     private static final String WECOM_WEBHOOK = System.getProperty("wecom.webhook",
-        "System.getenv("WECOM_WEBHOOK") != null ? System.getenv("WECOM_WEBHOOK") : """);
+        System.getenv("WECOM_WEBHOOK") != null ? System.getenv("WECOM_WEBHOOK") : "");
 
     /** 测试结果 */
     private String branchName;
