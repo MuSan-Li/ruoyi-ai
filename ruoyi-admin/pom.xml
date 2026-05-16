@@ -93,6 +93,12 @@
             <artifactId>ruoyi-aiflow</artifactId>
         </dependency>
 
+        <!--  AI代码审查模块  -->
+        <dependency>
+            <groupId>org.ruoyi</groupId>
+            <artifactId>ruoyi-ai-codereview</artifactId>
+        </dependency>
+
 
         <dependency>
             <groupId>de.codecentric</groupId>

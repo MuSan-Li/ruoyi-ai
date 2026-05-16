@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.ruoyi.codereview.mapper.PushReviewLogMapper">
+
+    <!-- 统计平均分 -->
+    <select id="selectAvgScore" resultType="java.lang.Double">
+        SELECT AVG(score) FROM push_review_log
+        WHERE update_time BETWEEN #{startDate} AND #{endDate}
+        AND score IS NOT NULL
+    </select>
+
+    <!-- 按项目统计 -->
+    <select id="selectProjectStats" resultType="java.util.Map">
+        SELECT
+            project_name as projectName,
+            COUNT(*) as total,
+            AVG(score) as avgScore,
+            SUM(additions) as additions,
+            SUM(deletions) as deletions
+        FROM push_review_log
+        WHERE update_time BETWEEN #{startDate} AND #{endDate}
+        GROUP BY project_name
+    </select>
+
+</mapper>

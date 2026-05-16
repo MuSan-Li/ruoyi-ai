@@ -389,6 +389,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!--  AI代码审查模块  -->
+            <dependency>
+                <groupId>org.ruoyi</groupId>
+                <artifactId>ruoyi-ai-codereview</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
             <!-- Jackson XML -->
             <dependency>
                 <groupId>com.fasterxml.jackson.dataformat</groupId>
@@ -411,6 +418,7 @@
         <module>ruoyi-common</module>
         <module>ruoyi-extend</module>
         <module>ruoyi-modules</module>
+        <module>ruoyi-business</module>
     </modules>
     <packaging>pom</packaging>
 
