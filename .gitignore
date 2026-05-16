@@ -52,3 +52,17 @@ data/
 
 .flattened-pom.xml
 /.claude/settings.local.json
+
+######################################################################
+# CodeReview Module
+ruoyi-business/ruoyi-ai-codereview/logs/
+ruoyi-business/ruoyi-ai-codereview/*.log
+
+######################################################################
+# Secrets - Never commit sensitive files
+**/application-local.yml
+**/application-*.local.yml
+**/secrets/
+**/*.pem
+**/*.key
+**/credentials.json
