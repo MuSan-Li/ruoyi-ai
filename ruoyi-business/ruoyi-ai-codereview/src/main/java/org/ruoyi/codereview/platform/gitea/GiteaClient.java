@@ -2,12 +2,12 @@ package org.ruoyi.codereview.platform.gitea;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.ruoyi.codereview.config.CodeReviewProperties;
 import org.ruoyi.codereview.entity.CodeChange;
-import org.ruoyi.codereview.platform.GitPlatformClient;
-import org.springframework.http.*;
+import org.ruoyi.codereview.platform.AbstractPlatformClient;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.web.client.RestClientException;
@@ -20,17 +20,32 @@ import java.util.List;
  * Gitea 平台 API 客户端
  */
 @Slf4j
-public class GiteaClient implements GitPlatformClient {
+public class GiteaClient extends AbstractPlatformClient {
 
-    private final String apiUrl;
-    private final String token;
-    private final RestTemplate restTemplate;
-
+    /**
+     * 从配置对象创建（兼容旧方式）
+     */
     public GiteaClient(CodeReviewProperties.GiteaConfig config, RestTemplate restTemplate) {
-        String baseUrl = config.getUrl();
-        this.apiUrl = baseUrl.endsWith("/") ? baseUrl + "api/v1" : baseUrl + "/api/v1";
-        this.token = config.getToken();
-        this.restTemplate = restTemplate;
+        super(buildApiUrl(config.getUrl()), config.getToken(), restTemplate);
+    }
+
+    /**
+     * 直接指定 URL 和 Token 创建（动态配置）
+     */
+    public GiteaClient(String url, String token, RestTemplate restTemplate) {
+        super(buildApiUrl(url), token, restTemplate);
+    }
+
+    private static String buildApiUrl(String baseUrl) {
+        return baseUrl.endsWith("/") ? baseUrl + "api/v1" : baseUrl + "/api/v1";
+    }
+
+    @Override
+    protected HttpHeaders buildHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "token " + token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
     }
 
     @Override
@@ -167,42 +182,7 @@ public class GiteaClient implements GitPlatformClient {
         return pr.getBool("draft", false);
     }
 
-    // ==================== HTTP 工具方法 ====================
-
-    private HttpHeaders buildHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "token " + token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
-    }
-
-    private JSONObject doGet(String url) {
-        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders());
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            return JSONUtil.parseObj(response.getBody());
-        }
-        return null;
-    }
-
-    private JSONArray doGetArray(String url) {
-        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders());
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            String body = response.getBody();
-            if (body.startsWith("[")) {
-                return JSONUtil.parseArray(body);
-            }
-        }
-        return new JSONArray();
-    }
-
-    private void doPost(String url, JSONObject body) {
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), buildHeaders());
-        restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-    }
-
-    // ==================== 解析工具 ====================
+    // ==================== Gitea 特有解析方法 ====================
 
     private List<CodeChange> parseGiteaFiles(JSONArray files) {
         List<CodeChange> result = new ArrayList<>();
@@ -223,28 +203,5 @@ public class GiteaClient implements GitPlatformClient {
             result.add(cc);
         }
         return result;
-    }
-
-    private String extractFileName(String path) {
-        if (path == null || path.isEmpty()) return "";
-        int idx = path.lastIndexOf('/');
-        return idx >= 0 ? path.substring(idx + 1) : path;
-    }
-
-    private String extractCommitMessages(JSONArray commits, String messageField) {
-        if (commits == null || commits.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < commits.size(); i++) {
-            JSONObject commit = commits.getJSONObject(i);
-            String msg;
-            if ("commit".equals(messageField)) {
-                JSONObject commitObj = commit.getJSONObject("commit");
-                msg = commitObj != null ? commitObj.getStr("message", "") : "";
-            } else {
-                msg = commit.getStr(messageField, "");
-            }
-            sb.append("- ").append(msg.split("\n")[0]).append("\n");
-        }
-        return sb.toString();
     }
 }

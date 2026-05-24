@@ -5,7 +5,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.ruoyi.codereview.entity.CodeChange;
 import org.ruoyi.codereview.util.PromptTemplate;
@@ -17,70 +17,92 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.*;
 
 /**
  * 并行审查服务
  * 支持多文件并行调用 LLM 进行审查
+ * <p>
+ * 使用共享线程池避免资源泄漏
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ParallelReviewService {
 
     private final ReviewConfigService configService;
     private final ChatServiceFactory chatServiceFactory;
 
-    /** 默认并行线程数 */
+    /**
+     * 默认并行线程数
+     */
     private static final int DEFAULT_PARALLEL_THREADS = 4;
 
-    /** 单文件最大 Token */
+    /**
+     * 单文件最大 Token
+     */
     private static final int MAX_TOKENS_PER_FILE = 4000;
 
     /**
+     * 共享线程池
+     */
+    private final ExecutorService sharedExecutor;
+
+    public ParallelReviewService(ReviewConfigService configService, ChatServiceFactory chatServiceFactory) {
+        this.configService = configService;
+        this.chatServiceFactory = chatServiceFactory;
+        int threads = configService.getInt("review.parallel.threads", DEFAULT_PARALLEL_THREADS);
+        this.sharedExecutor = Executors.newFixedThreadPool(threads);
+        log.info("ParallelReviewService 初始化，线程池大小: {}", threads);
+    }
+
+    /**
+     * 销毁时关闭线程池
+     */
+    @PreDestroy
+    public void shutdown() {
+        log.info("ParallelReviewService 关闭线程池...");
+        sharedExecutor.shutdown();
+        try {
+            if (!sharedExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                sharedExecutor.shutdownNow();
+                log.warn("ParallelReviewService 线程池强制关闭");
+            }
+        } catch (InterruptedException e) {
+            sharedExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
      * 并行审查多个文件
-     *
-     * @param changes       代码变更列表
-     * @param commitMessages 提交信息
-     * @param chatModelVo   模型配置
-     * @return 审查结果列表
      */
     public List<FileReviewResult> reviewInParallel(List<CodeChange> changes, String commitMessages, ChatModelVo chatModelVo) {
         if (!configService.getBoolean("review.parallel.enabled", true)) {
-            // 不启用并行，逐个处理
             return reviewSequentially(changes, commitMessages, chatModelVo);
         }
 
-        int threads = configService.getInt("review.parallel.threads", DEFAULT_PARALLEL_THREADS);
-        ExecutorService executor = Executors.newFixedThreadPool(Math.min(threads, changes.size()));
+        List<Future<FileReviewResult>> futures = new ArrayList<>();
+        String systemPrompt = PromptTemplate.buildSystemPrompt(configService.getString("review.style", "professional"));
 
-        try {
-            List<Future<FileReviewResult>> futures = new ArrayList<>();
-            String systemPrompt = PromptTemplate.buildSystemPrompt(configService.getString("review.style", "professional"));
-
-            for (CodeChange change : changes) {
-                futures.add(executor.submit(() -> reviewSingleFile(change, commitMessages, systemPrompt, chatModelVo)));
-            }
-
-            List<FileReviewResult> results = new ArrayList<>();
-            for (int i = 0; i < futures.size(); i++) {
-                try {
-                    FileReviewResult result = futures.get(i).get(60, TimeUnit.SECONDS);
-                    results.add(result);
-                } catch (TimeoutException e) {
-                    log.warn("文件审查超时: {}", changes.get(i).getFilePath());
-                    results.add(FileReviewResult.timeout(changes.get(i).getFilePath()));
-                } catch (Exception e) {
-                    log.error("文件审查失败: {}", changes.get(i).getFilePath(), e);
-                    results.add(FileReviewResult.error(changes.get(i).getFilePath(), e.getMessage()));
-                }
-            }
-
-            return results;
-        } finally {
-            executor.shutdown();
+        for (CodeChange change : changes) {
+            futures.add(sharedExecutor.submit(() -> reviewSingleFile(change, commitMessages, systemPrompt, chatModelVo)));
         }
+
+        List<FileReviewResult> results = new ArrayList<>();
+        for (int i = 0; i < futures.size(); i++) {
+            try {
+                FileReviewResult result = futures.get(i).get(60, TimeUnit.SECONDS);
+                results.add(result);
+            } catch (TimeoutException e) {
+                log.warn("文件审查超时: {}", changes.get(i).getFilePath());
+                results.add(FileReviewResult.timeout(changes.get(i).getFilePath()));
+            } catch (Exception e) {
+                log.error("文件审查失败: {}", changes.get(i).getFilePath(), e);
+                results.add(FileReviewResult.error(changes.get(i).getFilePath(), e.getMessage()));
+            }
+        }
+
+        return results;
     }
 
     /**
@@ -110,21 +132,17 @@ public class ParallelReviewService {
         String filePath = change.getFilePath();
         log.debug("开始审查文件: {}", filePath);
 
-        // 构建用户提示
         String userPrompt = buildFilePrompt(change, commitMessages);
 
-        // Token 截断
         if (TokenCounter.estimateTokens(userPrompt) > MAX_TOKENS_PER_FILE) {
             userPrompt = TokenCounter.truncate(userPrompt, MAX_TOKENS_PER_FILE);
             log.debug("文件 {} Prompt 已截断", filePath);
         }
 
-        // 调用 LLM
         long startTime = System.currentTimeMillis();
         String response = callLlm(systemPrompt, userPrompt, chatModelVo);
         long duration = System.currentTimeMillis() - startTime;
 
-        // 提取分数
         int score = PromptTemplate.extractScore(response);
 
         log.info("文件审查完成: {} (分数: {}, 耗时: {}ms)", filePath, score, duration);
@@ -162,7 +180,7 @@ public class ParallelReviewService {
 
         ChatRequest chatRequest = ChatRequest.builder()
             .messages(SystemMessage.from(systemPrompt), UserMessage.from(userPrompt))
-            .build();
+                .build();
 
         ChatResponse response = chatModel.chat(chatRequest);
         return response.aiMessage().text();
@@ -188,7 +206,6 @@ public class ParallelReviewService {
         int avgScore = successCount > 0 ? totalScore / successCount : 0;
         sb.append("## 总体评分: ").append(avgScore).append("/100\n\n");
 
-        // 按分数排序，问题文件排在前面
         results.stream()
             .sorted((a, b) -> Integer.compare(a.getScore(), b.getScore()))
             .forEach(result -> {
@@ -198,7 +215,7 @@ public class ParallelReviewService {
                     sb.append("**状态**: ").append(result.getError()).append("\n");
                 }
                 sb.append("\n");
-            });
+                });
 
         return sb.toString();
     }

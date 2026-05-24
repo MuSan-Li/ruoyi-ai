@@ -1,8 +1,6 @@
 package org.ruoyi.codereview.notifier;
 
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.crypto.SecureUtil;
-import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +14,7 @@ import java.util.Map;
  * 钉钉通知器
  */
 @Slf4j
-public class DingTalkNotifier implements Notifier {
+public class DingTalkNotifier extends AbstractWebhookNotifier {
 
     private final String webhookUrl;
     private final boolean secretEnabled;
@@ -29,35 +27,35 @@ public class DingTalkNotifier implements Notifier {
     }
 
     @Override
-    public boolean send(String title, String content) {
-        try {
-            String url = webhookUrl;
+    protected Map<String, Object> buildRequestBody(String title, String content) {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("msgtype", "markdown");
 
-            if (secretEnabled && StrUtil.isNotBlank(secret)) {
-                url = addSign(url, secret);
-            }
+        Map<String, Object> markdown = new HashMap<>();
+        markdown.put("title", title);
+        markdown.put("text", content);
+        requestBody.put("markdown", markdown);
 
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("msgtype", "markdown");
+        return requestBody;
+    }
 
-            Map<String, Object> markdown = new HashMap<>();
-            markdown.put("title", title);
-            markdown.put("text", content);
-            requestBody.put("markdown", markdown);
+    @Override
+    protected boolean isSuccessResponse(String response) {
+        JSONObject result = JSONUtil.parseObj(response);
+        return "0".equals(result.getStr("errcode"));
+    }
 
-            String response = HttpUtil.createPost(url)
-                    .header("Content-Type", "application/json")
-                    .body(JSONUtil.toJsonStr(requestBody))
-                    .timeout(30000)
-                    .execute()
-                    .body();
+    @Override
+    protected String getNotifierName() {
+        return "DingTalk";
+    }
 
-            JSONObject result = JSONUtil.parseObj(response);
-            return "0".equals(result.getStr("errcode"));
-        } catch (Exception e) {
-            log.error("发送钉钉通知失败", e);
-            return false;
+    @Override
+    protected String getWebhookUrl() {
+        if (secretEnabled && StrUtil.isNotBlank(secret)) {
+            return addSign(webhookUrl, secret);
         }
+        return webhookUrl;
     }
 
     private String addSign(String webhookUrl, String secret) {

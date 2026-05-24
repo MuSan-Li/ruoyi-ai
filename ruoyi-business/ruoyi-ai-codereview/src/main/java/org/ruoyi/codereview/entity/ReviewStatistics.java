@@ -4,25 +4,30 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 /**
  * 审查统计实体
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("cr_review_statistics")
-public class ReviewStatistics {
+public class ReviewStatistics extends TenantEntityLocalDateTime {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 项目名称 */
+    /**
+     * 项目名称
+     */
     private String projectName;
 
-    /** 平台 */
+    /**
+     * 平台
+     */
     private String platform;
 
     /** 统计日期 */
@@ -69,13 +74,4 @@ public class ReviewStatistics {
 
     /** 提交信息平均分 */
     private BigDecimal commitMessageAvg;
-
-    /** 租户ID */
-    private String tenantId;
-
-    /** 创建时间 */
-    private LocalDateTime createTime;
-
-    /** 更新时间 */
-    private LocalDateTime updateTime;
 }

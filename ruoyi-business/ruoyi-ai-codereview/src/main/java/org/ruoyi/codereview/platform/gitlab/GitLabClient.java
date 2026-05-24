@@ -2,12 +2,12 @@ package org.ruoyi.codereview.platform.gitlab;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.ruoyi.codereview.config.CodeReviewProperties;
 import org.ruoyi.codereview.entity.CodeChange;
-import org.ruoyi.codereview.platform.GitPlatformClient;
-import org.springframework.http.*;
+import org.ruoyi.codereview.platform.AbstractPlatformClient;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.web.client.RestClientException;
@@ -20,17 +20,32 @@ import java.util.List;
  * GitLab 平台 API 客户端
  */
 @Slf4j
-public class GitLabClient implements GitPlatformClient {
+public class GitLabClient extends AbstractPlatformClient {
 
-    private final String apiUrl;
-    private final String token;
-    private final RestTemplate restTemplate;
-
+    /**
+     * 从配置对象创建（兼容旧方式）
+     */
     public GitLabClient(CodeReviewProperties.GitLabConfig config, RestTemplate restTemplate) {
-        String baseUrl = config.getUrl();
-        this.apiUrl = baseUrl.endsWith("/") ? baseUrl + "api/v4" : baseUrl + "/api/v4";
-        this.token = config.getToken();
-        this.restTemplate = restTemplate;
+        super(buildApiUrl(config.getUrl()), config.getToken(), restTemplate);
+    }
+
+    /**
+     * 直接指定 URL 和 Token 创建（动态配置）
+     */
+    public GitLabClient(String url, String token, RestTemplate restTemplate) {
+        super(buildApiUrl(url), token, restTemplate);
+    }
+
+    private static String buildApiUrl(String baseUrl) {
+        return baseUrl.endsWith("/") ? baseUrl + "api/v4" : baseUrl + "/api/v4";
+    }
+
+    @Override
+    protected HttpHeaders buildHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("PRIVATE-TOKEN", token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
     }
 
     @Override
@@ -99,7 +114,7 @@ public class GitLabClient implements GitPlatformClient {
                 String url = apiUrl + "/projects/" + projectId + "/repository/commits?ref_name=" + targetBranch + "&per_page=20";
                 try {
                     JSONArray commits = doGetArray(url);
-                    return extractCommitMessages(commits);
+                    return extractCommitMessagesSimple(commits);
                 } catch (Exception e) {
                     log.warn("获取 MR commits 失败: {}", e.getMessage());
                 }
@@ -108,7 +123,7 @@ public class GitLabClient implements GitPlatformClient {
 
         // Push 事件
         JSONArray commits = payload.getJSONArray("commits");
-        return extractCommitMessages(commits);
+        return extractCommitMessagesSimple(commits);
     }
 
     @Override
@@ -173,45 +188,24 @@ public class GitLabClient implements GitPlatformClient {
     public boolean isDraft(JSONObject payload) {
         JSONObject attrs = payload.getJSONObject("object_attributes");
         if (attrs == null) return false;
-        return attrs.getBool("draft", false) || attrs.getBool("work_in_progress", false);
-    }
 
-    // ==================== HTTP 工具方法 ====================
-
-    private HttpHeaders buildHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("PRIVATE-TOKEN", token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
-    }
-
-    private JSONObject doGet(String url) {
-        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders());
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            return JSONUtil.parseObj(response.getBody());
+        // 检查 draft 标志
+        if (attrs.getBool("draft", false) || attrs.getBool("work_in_progress", false)) {
+            return true;
         }
-        return null;
+
+        // 检查标题前缀（GitLab 支持 Draft:/WIP: 前缀）
+        String title = attrs.getStr("title", "");
+        String lowerTitle = title.toLowerCase().trim();
+        return lowerTitle.startsWith("draft:")
+            || lowerTitle.startsWith("wip:")
+            || lowerTitle.startsWith("[draft]")
+            || lowerTitle.startsWith("[wip]")
+            || lowerTitle.startsWith("(draft)")
+            || lowerTitle.startsWith("(wip)");
     }
 
-    private JSONArray doGetArray(String url) {
-        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders());
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-            String body = response.getBody();
-            if (body.startsWith("[")) {
-                return JSONUtil.parseArray(body);
-            }
-        }
-        return new JSONArray();
-    }
-
-    private void doPost(String url, JSONObject body) {
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), buildHeaders());
-        restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-    }
-
-    // ==================== 解析工具 ====================
+    // ==================== GitLab 特有解析方法 ====================
 
     private List<CodeChange> parseChanges(JSONArray changes) {
         List<CodeChange> result = new ArrayList<>();
@@ -229,58 +223,5 @@ public class GitLabClient implements GitPlatformClient {
             result.add(cc);
         }
         return result;
-    }
-
-    private List<CodeChange> parseDiffArray(JSONArray diffs) {
-        List<CodeChange> result = new ArrayList<>();
-        if (diffs == null) return result;
-
-        for (int i = 0; i < diffs.size(); i++) {
-            JSONObject diff = diffs.getJSONObject(i);
-            CodeChange cc = new CodeChange();
-            cc.setFilePath(diff.getStr("new_path", diff.getStr("new_path", "")));
-            cc.setFileName(extractFileName(cc.getFilePath()));
-            cc.setDiff(diff.getStr("diff", ""));
-            cc.setChangeType(detectChangeType(diff));
-            cc.setAdditions(countLines(cc.getDiff(), true));
-            cc.setDeletions(countLines(cc.getDiff(), false));
-            result.add(cc);
-        }
-        return result;
-    }
-
-    private String detectChangeType(JSONObject change) {
-        if (change.getBool("deleted_file", false)) return "delete";
-        if (change.getBool("new_file", false)) return "add";
-        return "modify";
-    }
-
-    private int countLines(String diff, boolean additions) {
-        if (diff == null || diff.isEmpty()) return 0;
-        char prefix = additions ? '+' : '-';
-        int count = 0;
-        for (String line : diff.split("\n")) {
-            if (line.length() > 0 && line.charAt(0) == prefix
-                && (line.length() < 2 || line.charAt(1) != prefix)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private String extractFileName(String path) {
-        if (path == null || path.isEmpty()) return "";
-        int idx = path.lastIndexOf('/');
-        return idx >= 0 ? path.substring(idx + 1) : path;
-    }
-
-    private String extractCommitMessages(JSONArray commits) {
-        if (commits == null || commits.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < commits.size(); i++) {
-            JSONObject commit = commits.getJSONObject(i);
-            sb.append("- ").append(commit.getStr("message", commit.getStr("title", ""))).append("\n");
-        }
-        return sb.toString();
     }
 }

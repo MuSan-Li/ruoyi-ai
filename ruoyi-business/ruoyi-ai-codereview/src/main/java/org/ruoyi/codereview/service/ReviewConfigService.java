@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.ruoyi.codereview.entity.ProjectConfig;
 import org.ruoyi.codereview.entity.ReviewConfig;
 import org.ruoyi.codereview.entity.ReviewRule;
+import org.ruoyi.codereview.entity.dto.PlatformConfig;
 import org.ruoyi.codereview.mapper.ProjectConfigMapper;
 import org.ruoyi.codereview.mapper.ReviewConfigMapper;
 import org.ruoyi.codereview.mapper.ReviewRuleMapper;
@@ -133,6 +134,46 @@ public class ReviewConfigService {
         return projectConfigCache.get(key);
     }
 
+    /**
+     * 获取平台配置（从项目配置中提取）
+     *
+     * @param projectName 项目名称
+     * @param platform    平台类型
+     * @return 平台配置，如果项目未配置则返回 null
+     */
+    public PlatformConfig getPlatformConfig(String projectName, String platform) {
+        ProjectConfig projectConfig = getProjectConfig(projectName, platform);
+        if (projectConfig == null) {
+            return null;
+        }
+
+        String url = projectConfig.getPlatformUrl();
+        String token = projectConfig.getPlatformToken();
+        String webhookSecret = projectConfig.getWebhookSecret();
+
+        if (url == null || url.isEmpty() || token == null || token.isEmpty()) {
+            return null;
+        }
+
+        return PlatformConfig.fromProjectConfig(platform, url, token, webhookSecret);
+    }
+
+    /**
+     * 获取 Webhook 密钥（用于验证 Webhook 请求）
+     *
+     * @param projectName 项目名称
+     * @param platform    平台类型
+     * @return Webhook 密钥
+     */
+    public String getWebhookSecret(String projectName, String platform) {
+        ProjectConfig projectConfig = getProjectConfig(projectName, platform);
+        if (projectConfig != null && projectConfig.getWebhookSecret() != null) {
+            return projectConfig.getWebhookSecret();
+        }
+        // fallback 到全局配置
+        return getString("platform." + platform + ".webhook_secret");
+    }
+
     // ==================== 缓存管理 ====================
 
     /**
@@ -146,13 +187,26 @@ public class ReviewConfigService {
 
     /**
      * 刷新所有缓存
+     * <p>
+     * 使用 Copy-On-Write 模式：先构建新缓存，再原子替换，避免刷新期间缓存为空
      */
     public synchronized void refreshCache() {
         log.info("刷新代码审查配置缓存...");
         try {
-            refreshConfigCache();
-            refreshRuleCache();
-            refreshProjectConfigCache();
+            // 先构建新缓存（不修改现有缓存）
+            Map<String, String> newConfigCache = buildConfigCache();
+            List<ReviewRule> newRuleCache = buildRuleCache();
+            Map<String, ProjectConfig> newProjectConfigCache = buildProjectConfigCache();
+
+            // 原子替换：先清空再填充（ConcurrentHashMap 保证线程安全）
+            configCache.clear();
+            configCache.putAll(newConfigCache);
+
+            ruleCache = newRuleCache;
+
+            projectConfigCache.clear();
+            projectConfigCache.putAll(newProjectConfigCache);
+
             initialized = true;
             log.info("代码审查配置缓存刷新完成: 配置{}项, 规则{}条, 项目{}个",
                 configCache.size(),
@@ -163,32 +217,43 @@ public class ReviewConfigService {
         }
     }
 
-    private void refreshConfigCache() {
-        configCache.clear();
+    /**
+     * 构建配置缓存（不修改现有缓存）
+     */
+    private Map<String, String> buildConfigCache() {
+        Map<String, String> cache = new ConcurrentHashMap<>();
         List<ReviewConfig> configs = reviewConfigMapper.selectList(
             new LambdaQueryWrapper<ReviewConfig>()
                 .eq(ReviewConfig::getStatus, 1)
         );
         for (ReviewConfig config : configs) {
-            configCache.put(config.getConfigKey(), config.getConfigValue());
+            cache.put(config.getConfigKey(), config.getConfigValue());
         }
+        return cache;
     }
 
-    private void refreshRuleCache() {
-        ruleCache = reviewRuleMapper.selectList(
+    /**
+     * 构建规则缓存
+     */
+    private List<ReviewRule> buildRuleCache() {
+        return reviewRuleMapper.selectList(
             new LambdaQueryWrapper<ReviewRule>()
                 .eq(ReviewRule::getEnabled, 1)
                 .orderByAsc(ReviewRule::getSortOrder)
         );
     }
 
-    private void refreshProjectConfigCache() {
-        projectConfigCache.clear();
+    /**
+     * 构建项目配置缓存（不修改现有缓存）
+     */
+    private Map<String, ProjectConfig> buildProjectConfigCache() {
+        Map<String, ProjectConfig> cache = new ConcurrentHashMap<>();
         List<ProjectConfig> configs = projectConfigMapper.selectList(null);
         for (ProjectConfig config : configs) {
             String key = config.getProjectName() + ":" + config.getPlatform();
-            projectConfigCache.put(key, config);
+            cache.put(key, config);
         }
+        return cache;
     }
 
     /**

@@ -4,11 +4,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.ruoyi.codereview.service.ReviewConfigService;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.Mockito.*;
 
 /**
@@ -19,21 +20,29 @@ class NotifierManagerTest {
 
     private NotifierManager notifierManager;
     private List<Notifier> notifiers;
+    private ReviewConfigService mockConfigService;
+    private NotifierFactory mockNotifierFactory;
 
     @BeforeEach
     void setUp() {
         notifiers = new ArrayList<>();
+        mockConfigService = mock(ReviewConfigService.class);
+        mockNotifierFactory = mock(NotifierFactory.class);
+    }
+
+    private NotifierManager createNotifierManager() {
+        return new NotifierManager(notifiers, mockConfigService, mockNotifierFactory);
     }
 
     @Test
     @DisplayName("空通知器列表 - 不发送任何通知")
     void emptyNotifierList_noNotificationsSent() {
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
         // 不应该抛出异常
         assertDoesNotThrow(() -> {
             notifierManager.notifyMergeRequestReviewed(
-                "test-project", "testuser", "feature", "main",
+                "test-project", "gitlab", "testuser", "feature", "main",
                 "https://test.url", 85, "Good code"
             );
         });
@@ -50,10 +59,10 @@ class NotifierManagerTest {
         notifiers.add(mockNotifier1);
         notifiers.add(mockNotifier2);
 
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
         notifierManager.notifyMergeRequestReviewed(
-            "test-project", "testuser", "feature", "main",
+            "test-project", "gitlab", "testuser", "feature", "main",
             "https://test.url", 85, "Good code"
         );
 
@@ -68,9 +77,9 @@ class NotifierManagerTest {
         when(mockNotifier.send(any(), any())).thenReturn(true);
 
         notifiers.add(mockNotifier);
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
-        notifierManager.notifyPushReviewed("test-project", "testuser", "main", 90, "Excellent");
+        notifierManager.notifyPushReviewed("test-project", "gitlab", "testuser", "main", 90, "Excellent");
 
         verify(mockNotifier).send(contains("代码审查完成"), any());
     }
@@ -82,7 +91,7 @@ class NotifierManagerTest {
         when(mockNotifier.send(any(), any())).thenReturn(true);
 
         notifiers.add(mockNotifier);
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
         String report = "今日审查统计: 10个MR, 平均分85";
         notifierManager.notifyDailyReport(report);
@@ -102,12 +111,12 @@ class NotifierManagerTest {
         notifiers.add(failingNotifier);
         notifiers.add(workingNotifier);
 
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
         // 不应该抛出异常
         assertDoesNotThrow(() -> {
             notifierManager.notifyMergeRequestReviewed(
-                "test-project", "testuser", "feature", "main",
+                "test-project", "gitlab", "testuser", "feature", "main",
                 "https://test.url", 85, "Good code"
             );
         });
@@ -122,10 +131,10 @@ class NotifierManagerTest {
         when(mockNotifier.send(any(), any())).thenReturn(true);
 
         notifiers.add(mockNotifier);
-        notifierManager = new NotifierManager(notifiers);
+        notifierManager = createNotifierManager();
 
         notifierManager.notifyMergeRequestReviewed(
-            "my-project", "john", "feature/test", "develop",
+            "my-project", "github", "john", "feature/test", "develop",
             "https://github.com/test/pr/1", 92, "Great work!"
         );
 

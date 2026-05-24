@@ -63,6 +63,12 @@
             <artifactId>spring-retry</artifactId>
         </dependency>
 
+        <!-- Apache HttpClient5 连接池 -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
         <!-- 测试依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

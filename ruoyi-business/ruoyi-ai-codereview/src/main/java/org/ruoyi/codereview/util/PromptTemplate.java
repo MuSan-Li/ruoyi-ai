@@ -1,15 +1,29 @@
 package org.ruoyi.codereview.util;
 
+import cn.hutool.json.JSONUtil;
 import org.ruoyi.codereview.entity.CodeChange;
+import org.ruoyi.codereview.entity.ReviewRule;
 
 import java.util.List;
 
 /**
  * Prompt 模板工具
+ * <p>
+ * 支持动态注入自定义审查规则
  */
 public class PromptTemplate {
 
+    /**
+     * 构建系统提示词（无自定义规则）
+     */
     public static String buildSystemPrompt(String style) {
+        return buildSystemPrompt(style, null);
+    }
+
+    /**
+     * 构建系统提示词（支持自定义规则）
+     */
+    public static String buildSystemPrompt(String style, List<ReviewRule> customRules) {
         String base = """
             你是一位资深软件工程师，负责审查代码变更。请从以下维度进行评分（总分100分）：
 
@@ -26,14 +40,39 @@ public class PromptTemplate {
             - 如有问题，给出具体修改建议
             """;
 
+        // 注入自定义规则
+        if (customRules != null && !customRules.isEmpty()) {
+            StringBuilder rulesSection = new StringBuilder("\n\n## 自定义审查规则\n");
+            rulesSection.append("请额外关注以下审查规则：\n\n");
+
+            for (ReviewRule rule : customRules) {
+                rulesSection.append("- **").append(rule.getRuleName()).append("**");
+                if (rule.getDescription() != null) {
+                    rulesSection.append("：").append(rule.getDescription());
+                }
+                rulesSection.append("\n");
+            }
+            base += rulesSection.toString();
+        }
+
+        return base + getStylePrompt(style);
+    }
+
+    /**
+     * 获取风格提示
+     */
+    private static String getStylePrompt(String style) {
         return switch (style) {
-            case "sarcastic" -> base + "\n你的风格是幽默讽刺的，用犀利的语言指出问题，但技术分析一针见血。";
-            case "gentle" -> base + "\n你的风格是温和友善的，建议为主鼓励为辅，用'建议'、'可以考虑'等措辞。";
-            case "humorous" -> base + "\n你的风格是轻松幽默的，用生动比喻和emoji来解释问题。";
-            default -> base + "\n你的风格是专业严谨的，直接指出问题并提供解决方案。";
+            case "sarcastic" -> "\n你的风格是幽默讽刺的，用犀利的语言指出问题，但技术分析一针见血。";
+            case "gentle" -> "\n你的风格是温和友善的，建议为主鼓励为辅，用'建议'、'可以考虑'等措辞。";
+            case "humorous" -> "\n你的风格是轻松幽默的，用生动比喻和emoji来解释问题。";
+            default -> "\n你的风格是专业严谨的，直接指出问题并提供解决方案。";
         };
     }
 
+    /**
+     * 构建用户提示词
+     */
     public static String buildUserPrompt(List<CodeChange> changes, String commitMessages) {
         StringBuilder sb = new StringBuilder();
         sb.append("请审查以下代码变更：\n\n");
@@ -78,5 +117,19 @@ public class PromptTemplate {
         }
 
         return 70;
+    }
+
+    /**
+     * 解析自定义规则 JSON
+     */
+    public static List<ReviewRule> parseCustomRules(String customRulesJson) {
+        if (customRulesJson == null || customRulesJson.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return JSONUtil.toList(customRulesJson, ReviewRule.class);
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }

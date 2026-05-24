@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.ruoyi.codereview.entity.ProjectConfig;
 import org.ruoyi.codereview.entity.ReviewConfig;
 import org.ruoyi.codereview.entity.ReviewRule;
+import org.ruoyi.codereview.notifier.NotifierManager;
+import org.ruoyi.codereview.service.ProjectConfigService;
 import org.ruoyi.codereview.service.ReviewConfigService;
 import org.ruoyi.codereview.service.ReviewStatisticsService;
 import org.ruoyi.common.core.domain.R;
@@ -12,6 +14,7 @@ import org.ruoyi.common.mybatis.core.page.TableDataInfo;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -25,7 +28,9 @@ import java.util.Map;
 public class ReviewConfigController {
 
     private final ReviewConfigService configService;
+    private final ProjectConfigService projectConfigService;
     private final ReviewStatisticsService statisticsService;
+    private final NotifierManager notifierManager;
 
     // ==================== 配置管理 ====================
 
@@ -94,13 +99,73 @@ public class ReviewConfigController {
     // ==================== 项目配置管理 ====================
 
     /**
-     * 获取项目配置
+     * 分页查询项目配置
      */
-    @GetMapping("/project")
+    @GetMapping("/project/list")
+    public TableDataInfo<ProjectConfig> listProjectConfigs(PageQuery pageQuery) {
+        return projectConfigService.queryPageList(pageQuery);
+    }
+
+    /**
+     * 查询所有项目配置
+     */
+    @GetMapping("/project/all")
+    public R<List<ProjectConfig>> listAllProjectConfigs() {
+        return R.ok(projectConfigService.listAll());
+    }
+
+    /**
+     * 根据ID获取项目配置
+     */
+    @GetMapping("/project/{id}")
+    public R<ProjectConfig> getProjectConfigById(@PathVariable Long id) {
+        return R.ok(projectConfigService.getById(id));
+    }
+
+    /**
+     * 根据项目名和平台获取配置
+     */
+    @GetMapping("/project/query")
     public R<ProjectConfig> getProjectConfig(
         @RequestParam String projectName,
         @RequestParam String platform) {
         return R.ok(configService.getProjectConfig(projectName, platform));
+    }
+
+    /**
+     * 新增项目配置
+     */
+    @PostMapping("/project")
+    public R<Void> createProjectConfig(@RequestBody ProjectConfig config) {
+        projectConfigService.save(config);
+        return R.ok();
+    }
+
+    /**
+     * 更新项目配置
+     */
+    @PutMapping("/project")
+    public R<Void> updateProjectConfig(@RequestBody ProjectConfig config) {
+        projectConfigService.updateById(config);
+        return R.ok();
+    }
+
+    /**
+     * 删除项目配置
+     */
+    @DeleteMapping("/project/{ids}")
+    public R<Void> deleteProjectConfig(@PathVariable Long[] ids) {
+        projectConfigService.removeBatchByIds(Arrays.asList(ids));
+        return R.ok();
+    }
+
+    /**
+     * 测试通知渠道配置
+     */
+    @PostMapping("/project/test-notification")
+    public R<Void> testNotification(@RequestBody ProjectConfig config) {
+        notifierManager.testNotification(config);
+        return R.ok();
     }
 
     // ==================== 趋势统计 ====================
@@ -113,7 +178,7 @@ public class ReviewConfigController {
         @RequestParam String projectName,
         @RequestParam String platform,
         @RequestParam(defaultValue = "30") int days) {
-        return R.ok(statisticsService.getTrend(projectName, platform, days));
+        return R.ok(statisticsService.getTrend(projectName, platform, null, days));
     }
 
     /**
@@ -124,7 +189,7 @@ public class ReviewConfigController {
         @RequestParam String projectName,
         @RequestParam String platform,
         @RequestParam(defaultValue = "30") int days) {
-        return R.ok(statisticsService.generateTrendReport(projectName, platform, days));
+        return R.ok("操作成功", statisticsService.generateTrendReport(projectName, platform, null, days));
     }
 
     // ==================== 评分等级 ====================

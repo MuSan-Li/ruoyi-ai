@@ -10,14 +10,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.ruoyi.codereview.config.CodeReviewProperties;
 import org.ruoyi.codereview.service.CodeReviewService;
-import org.ruoyi.common.core.domain.R;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * WebhookController 单元测试
@@ -90,6 +90,7 @@ class WebhookControllerTest {
         String payload = """
             {
                 "object_kind": "push",
+                "project": {"id": 1, "name": "test"},
                 "ref": "refs/heads/main",
                 "before": "abc123",
                 "after": "def456",
@@ -160,6 +161,7 @@ class WebhookControllerTest {
                 "action": "opened",
                 "repository": {"id": 1, "name": "test"},
                 "pull_request": {
+                    "number": 1,
                     "html_url": "https://github.com/test/pr/1",
                     "head": {"ref": "feature", "sha": "abc"},
                     "base": {"ref": "main"}
@@ -280,7 +282,7 @@ class WebhookControllerTest {
         mockMvc.perform(post("/codereview/webhook/gitlab")
                 .header("X-Gitlab-Event", "unknown_event")
                 .contentType("application/json")
-                .content("{}"))
+                .content("{\"project\":{\"id\":1,\"name\":\"test\"}}"))
             .andExpect(status().isOk());
 
         verify(codeReviewService, never()).handleGitLabMergeRequest(any());

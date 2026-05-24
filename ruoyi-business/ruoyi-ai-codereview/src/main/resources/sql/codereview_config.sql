@@ -44,31 +44,35 @@ CREATE TABLE cr_review_rule (
     UNIQUE KEY uk_rule_code (rule_code, tenant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审查规则表';
 
--- 项目审查配置表
+-- 项目审查配置表（包含平台配置）
 DROP TABLE IF EXISTS cr_project_config;
-CREATE TABLE cr_project_config (
-    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    project_name VARCHAR(200) NOT NULL COMMENT '项目名称',
-    platform VARCHAR(20) NOT NULL COMMENT '平台: github, gitlab, gitea',
-    project_id VARCHAR(100) COMMENT '平台项目ID',
-    model_id BIGINT COMMENT '使用的模型ID',
-    review_enabled TINYINT DEFAULT 1 COMMENT '是否启用审查',
-    push_review_enabled TINYINT DEFAULT 1 COMMENT '是否启用Push审查',
-    protected_branches_only TINYINT DEFAULT 0 COMMENT '仅审查受保护分支',
-    file_extensions VARCHAR(500) COMMENT '审查文件扩展名(逗号分隔)',
-    exclude_patterns VARCHAR(500) COMMENT '排除文件模式(逗号分隔)',
-    max_files_per_review INT DEFAULT 50 COMMENT '单次最大审查文件数',
-    max_tokens INT DEFAULT 10000 COMMENT '最大Token数',
-    review_style VARCHAR(50) DEFAULT 'professional' COMMENT '审查风格',
-    pass_score INT DEFAULT 60 COMMENT '通过分数',
-    notification_channels VARCHAR(200) COMMENT '通知渠道(逗号分隔)',
-    custom_rules TEXT COMMENT '自定义规则(JSON)',
-    tenant_id VARCHAR(20) DEFAULT '000000' COMMENT '租户ID',
-    create_dept BIGINT COMMENT '创建部门',
-    create_by BIGINT COMMENT '创建者',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_by BIGINT COMMENT '更新者',
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+CREATE TABLE cr_project_config
+(
+    id                      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    project_name            VARCHAR(200) NOT NULL COMMENT '项目名称',
+    platform                VARCHAR(20)  NOT NULL COMMENT '平台: github, gitlab, gitea',
+    project_id              VARCHAR(100) COMMENT '平台项目ID',
+    platform_url            VARCHAR(500) COMMENT '平台服务器URL',
+    platform_token          VARCHAR(500) COMMENT '平台访问Token(加密存储)',
+    webhook_secret          VARCHAR(200) COMMENT 'Webhook密钥',
+    model_id                BIGINT COMMENT '使用的模型ID',
+    review_enabled          TINYINT     DEFAULT 1 COMMENT '是否启用审查',
+    push_review_enabled     TINYINT     DEFAULT 1 COMMENT '是否启用Push审查',
+    protected_branches_only TINYINT     DEFAULT 0 COMMENT '仅审查受保护分支',
+    file_extensions         VARCHAR(500) COMMENT '审查文件扩展名(逗号分隔)',
+    exclude_patterns        VARCHAR(500) COMMENT '排除文件模式(逗号分隔)',
+    max_files_per_review    INT         DEFAULT 50 COMMENT '单次最大审查文件数',
+    max_tokens              INT         DEFAULT 10000 COMMENT '最大Token数',
+    review_style            VARCHAR(50) DEFAULT 'professional' COMMENT '审查风格',
+    pass_score              INT         DEFAULT 60 COMMENT '通过分数',
+    notification_channels   TEXT COMMENT '通知渠道(JSON)',
+    custom_rules            TEXT COMMENT '自定义规则(JSON)',
+    tenant_id               VARCHAR(20) DEFAULT '000000' COMMENT '租户ID',
+    create_dept             BIGINT COMMENT '创建部门',
+    create_by               BIGINT COMMENT '创建者',
+    create_time             DATETIME    DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_by               BIGINT COMMENT '更新者',
+    update_time             DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_project (project_name, platform, tenant_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目审查配置表';
@@ -126,15 +130,12 @@ INSERT INTO cr_review_config (config_key, config_value, config_type, description
 -- 通知配置
 ('notification.enabled', 'true', 'BOOLEAN', '是否启用通知', 'notification', 1),
 ('notification.include_full_report', 'false', 'BOOLEAN', '是否包含完整报告', 'notification', 2),
-('notification.summary_max_length', '500', 'NUMBER', '摘要最大长度', 'notification', 3),
-
--- 平台配置
-('platform.github.enabled', 'true', 'BOOLEAN', '是否启用GitHub', 'platform', 1),
-('platform.gitlab.enabled', 'true', 'BOOLEAN', '是否启用GitLab', 'platform', 2),
-('platform.gitea.enabled', 'true', 'BOOLEAN', '是否启用Gitea', 'platform', 3);
+('notification.summary_max_length', '500', 'NUMBER', '摘要最大长度', 'notification', 3);
 
 -- 初始化默认审查规则
-INSERT INTO cr_review_rule (rule_name, rule_code, dimension, weight, description, severity, language_pattern, enabled, sort_order) VALUES
+INSERT INTO cr_review_rule (rule_name, rule_code, dimension, weight, description, severity, language_pattern, enabled,
+                            sort_order)
+VALUES
 -- 功能性规则
 ('空指针检查', 'NULL_POINTER_CHECK', 'functionality', 10, '检查可能的空指针异常', 'error', '*', 1, 1),
 ('异常处理完整性', 'EXCEPTION_HANDLING', 'functionality', 8, '检查异常处理是否完整', 'warning', '*', 1, 2),

@@ -21,50 +21,63 @@ public class ReviewEventListener {
     @EventListener
     public void handleMergeRequestReviewed(MergeRequestReviewedEvent event) {
         log.info("收到 MR 审查完成事件: 项目={}, 作者={}, 分支={}→{}",
-                event.getProjectName(), event.getAuthor(),
-                event.getSourceBranch(), event.getTargetBranch());
+            event.getProjectName(), event.getAuthor(),
+            event.getSourceBranch(), event.getTargetBranch());
 
-        // 发送通知
-        notifierManager.notifyMergeRequestReviewed(
+        try {
+            notifierManager.notifyMergeRequestReviewed(
                 event.getProjectName(),
+                event.getPlatform(),
                 event.getAuthor(),
                 event.getSourceBranch(),
                 event.getTargetBranch(),
                 event.getUrl(),
                 event.getScore(),
-                event.getReviewResult()
-        );
+                event.getReviewResult(),
+                event.getNotificationChannels()
+            );
+        } catch (Exception e) {
+            log.error("MR 审查通知发送失败: 项目={}", event.getProjectName(), e);
+        }
     }
 
     @Async
     @EventListener
     public void handlePushReviewed(PushReviewedEvent event) {
         log.info("收到 Push 审查完成事件: 项目={}, 作者={}, 分支={}",
-                event.getProjectName(), event.getAuthor(), event.getBranch());
+            event.getProjectName(), event.getAuthor(), event.getBranch());
 
-        // 发送通知
-        notifierManager.notifyPushReviewed(
+        try {
+            notifierManager.notifyPushReviewed(
                 event.getProjectName(),
+                event.getPlatform(),
                 event.getAuthor(),
                 event.getBranch(),
                 event.getScore(),
-                event.getReviewResult()
-        );
+                event.getReviewResult(),
+                event.getNotificationChannels()
+            );
+        } catch (Exception e) {
+            log.error("Push 审查通知发送失败: 项目={}", event.getProjectName(), e);
+        }
     }
 
     @Async
     @EventListener
     public void handleReviewFailed(ReviewFailedEvent event) {
         log.warn("收到审查失败事件: 项目={}, 平台={}, 事件类型={}, 错误={}",
-                event.getProjectName(), event.getPlatform(),
-                event.getEventType(), event.getErrorMessage());
+            event.getProjectName(), event.getPlatform(),
+            event.getEventType(), event.getErrorMessage());
 
-        // 发送失败通知
-        notifierManager.notifyReviewFailed(
+        try {
+            notifierManager.notifyReviewFailed(
                 event.getProjectName(),
                 event.getPlatform(),
                 event.getEventType(),
                 event.getErrorMessage()
-        );
+            );
+        } catch (Exception e) {
+            log.error("审查失败通知发送失败: 项目={}", event.getProjectName(), e);
+        }
     }
 }

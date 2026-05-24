@@ -39,7 +39,9 @@ public class IncrementalReviewService {
         List<CodeLine> addedLines = new ArrayList<>();
         Matcher addMatcher = DIFF_ADD_PATTERN.matcher(diff);
         while (addMatcher.find()) {
-            String line = addMatcher.group(1).trim();
+            String line = addMatcher.group(1);
+            if (line == null) continue;
+            line = line.trim();
             if (!line.isEmpty() && !isCommentOnly(line)) {
                 addedLines.add(new CodeLine(line, "ADD"));
             }
@@ -49,7 +51,9 @@ public class IncrementalReviewService {
         List<CodeLine> deletedLines = new ArrayList<>();
         Matcher delMatcher = DIFF_DEL_PATTERN.matcher(diff);
         while (delMatcher.find()) {
-            String line = delMatcher.group(1).trim();
+            String line = delMatcher.group(1);
+            if (line == null) continue;
+            line = line.trim();
             if (!line.isEmpty() && !isCommentOnly(line)) {
                 deletedLines.add(new CodeLine(line, "DEL"));
             }
